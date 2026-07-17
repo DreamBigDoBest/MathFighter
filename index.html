@@ -1,0 +1,2190 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<title>Math Battle — 1v1 Math Fighting Game</title>
+<!-- PeerJS: zero-config P2P WebRTC. No account or server needed. -->
+<script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+body {
+  background: radial-gradient(ellipse at center, #0d0d2b 0%, #050510 100%);
+  min-height: 100vh;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding: 16px;
+  font-family: 'Segoe UI', Arial, sans-serif;
+  overflow: hidden;
+}
+
+/* ── Game wrapper ── */
+#gameWrapper {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0;
+  position: relative;
+}
+
+/* ── Canvas ── */
+#gameCanvas {
+  display: block;
+  border-radius: 12px;
+  box-shadow:
+    0 0 0 2px #3a1a6e,
+    0 0 40px rgba(120, 60, 220, 0.4),
+    0 8px 32px rgba(0,0,0,0.8);
+  image-rendering: pixelated;
+  cursor: pointer;
+  touch-action: none;
+  background: #0a0a1e;
+}
+
+/* ── Title strip above canvas ── */
+#titleStrip {
+  width: 100%;
+  text-align: center;
+  padding: 8px 0 10px;
+  font-size: 22px;
+  font-weight: 900;
+  letter-spacing: 6px;
+  text-transform: uppercase;
+  background: linear-gradient(90deg, #ff4080, #a020f0, #00cfff);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  filter: drop-shadow(0 0 8px rgba(160, 32, 240, 0.6));
+}
+
+/* ── Action buttons below canvas ── */
+#btnRow {
+  display: flex;
+  gap: 10px;
+  margin-top: 10px;
+  justify-content: center;
+}
+.ui-btn {
+  padding: 10px 22px;
+  border-radius: 10px;
+  border: none;
+  cursor: pointer;
+  font-family: 'Segoe UI', Arial, sans-serif;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  background: linear-gradient(180deg, #404050, #202030);
+  color: #c0c0d0;
+  box-shadow: 0 3px 0 rgba(0,0,0,0.5), 0 4px 10px rgba(0,0,0,0.3);
+  transition: filter .1s, transform .06s;
+}
+.ui-btn:active { transform: translateY(2px); box-shadow: 0 1px 0 rgba(0,0,0,0.4); }
+.btn-2p { background: linear-gradient(180deg, #9040e0, #5010a0); color: #f0e0ff; }
+
+/* ── Portrait / mobile: hide chrome, fill screen ── */
+@media (max-width: 699px) {
+  body        { min-height: 100dvh; padding: 0; align-items: flex-start; }
+  #titleStrip { display: none; }
+  #btnRow     { display: none; }
+  #gameWrapper { gap: 0; }
+}
+
+/* ── Fullscreen toggle ── */
+#fs-btn {
+  position: fixed;
+  top: 8px; right: 8px;
+  z-index: 450;
+  width: 34px; height: 34px;
+  border-radius: 8px;
+  background: rgba(0,0,0,0.6);
+  color: #fff;
+  border: 1px solid rgba(255,255,255,0.2);
+  font-size: 16px;
+  cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+}
+#fs-btn:active { background: rgba(255,255,255,0.2); }
+
+/* ══════════════════════════════════════════
+   LOBBY OVERLAY
+══════════════════════════════════════════ */
+#lobby {
+  display: none;
+  position: fixed;
+  inset: 0;
+  z-index: 500;
+  background: rgba(0,0,0,0.90);
+  justify-content: center;
+  align-items: center;
+  padding: 16px;
+  font-family: 'Segoe UI', Arial, sans-serif;
+}
+#lobby.visible { display: flex; }
+
+.lobby-box {
+  background: linear-gradient(160deg, #0e0e2a 0%, #07071a 100%);
+  border: 2px solid #5a1aae;
+  border-radius: 16px;
+  padding: 28px 32px;
+  width: 100%;
+  max-width: 380px;
+  box-shadow: 0 0 50px rgba(100, 40, 200, 0.3), inset 0 1px 0 rgba(255,255,255,0.05);
+  color: #c8a0ff;
+  text-align: center;
+}
+
+.lobby-title {
+  font-size: 24px;
+  font-weight: 900;
+  letter-spacing: 4px;
+  text-transform: uppercase;
+  background: linear-gradient(90deg, #ff4080, #a020f0, #00cfff);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  margin-bottom: 4px;
+}
+.lobby-subtitle {
+  font-size: 10px;
+  letter-spacing: 3px;
+  color: #5a3a8a;
+  margin-bottom: 24px;
+  text-transform: uppercase;
+}
+
+/* Lobby views: 'home' | 'create' | 'join' | 'waiting' | 'connecting' */
+.lv { display: none; flex-direction: column; gap: 12px; align-items: center; }
+.lv.active { display: flex; }
+
+.lobby-input {
+  width: 100%;
+  background: #07071a;
+  border: 1px solid #5a1aae;
+  border-radius: 8px;
+  color: #c8a0ff;
+  font-family: 'Segoe UI', monospace;
+  font-size: 18px;
+  letter-spacing: 4px;
+  text-align: center;
+  text-transform: uppercase;
+  padding: 12px 10px;
+  outline: none;
+}
+.lobby-input::placeholder { color: #2a1a4a; letter-spacing: 2px; }
+.lobby-input:focus { border-color: #9040e0; box-shadow: 0 0 10px rgba(144, 64, 224, 0.35); }
+
+.lobby-btn {
+  width: 100%;
+  padding: 14px;
+  border-radius: 10px;
+  border: none;
+  cursor: pointer;
+  font-family: 'Segoe UI', sans-serif;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 3px;
+  text-transform: uppercase;
+  transition: filter .1s, transform .06s;
+}
+.lobby-btn:active { transform: scale(0.97); filter: brightness(0.85); }
+.lbtn-purple { background: linear-gradient(180deg, #9040e0, #5010a0); color: #f0e0ff; }
+.lbtn-pink   { background: linear-gradient(180deg, #e04080, #a01050); color: #ffe0ef; }
+.lbtn-cyan   { background: linear-gradient(180deg, #00b0d0, #006090); color: #e0f8ff; }
+.lbtn-gray   { background: linear-gradient(180deg, #404050, #202030); color: #c0c0d0; }
+
+.lobby-status {
+  font-size: 11px;
+  letter-spacing: 2px;
+  color: #9040e0;
+  min-height: 18px;
+  text-align: center;
+}
+.lobby-code-display {
+  font-size: 26px;
+  font-weight: 900;
+  letter-spacing: 10px;
+  color: #c8a0ff;
+  background: #07071a;
+  border: 1px solid #5a1aae;
+  border-radius: 8px;
+  padding: 12px 18px;
+  width: 100%;
+  text-align: center;
+  text-transform: uppercase;
+}
+.lobby-hint {
+  font-size: 10px;
+  color: #3a2060;
+  letter-spacing: 1px;
+  line-height: 1.8;
+}
+.lobby-error { color: #e04060; font-size: 10px; letter-spacing: 1px; min-height: 14px; }
+</style>
+</head>
+<body>
+
+<div id="gameWrapper">
+  <div id="titleStrip">⚔ MATH BATTLE ⚔</div>
+  <canvas id="gameCanvas" width="420" height="640"></canvas>
+  <div id="btnRow">
+    <button class="ui-btn" onclick="initAudio();startSolo()">▶ SOLO vs CPU</button>
+    <button class="ui-btn btn-2p" onclick="initAudio();lobbyOpen()">⚡ 2P ONLINE</button>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════
+     LOBBY OVERLAY
+══════════════════════════════════════════ -->
+<div id="lobby">
+  <div class="lobby-box">
+    <div class="lobby-title">Math Battle</div>
+    <div class="lobby-subtitle">1v1 Real-Time Math Fighting</div>
+
+    <!-- View: home -->
+    <div class="lv active" id="lv-home">
+      <button class="lobby-btn lbtn-purple" onclick="lobbyShowCreate()">CREATE ROOM</button>
+      <button class="lobby-btn lbtn-cyan"   onclick="lobbyShowJoin()">JOIN ROOM</button>
+      <button class="lobby-btn lbtn-gray" id="btn-solo" onclick="lobbyClose();startSolo()">PLAY VS CPU</button>
+    </div>
+
+    <!-- View: create -->
+    <div class="lv" id="lv-create">
+      <input class="lobby-input" id="inp-create" maxlength="12" placeholder="ROOM NAME" autocomplete="off" spellcheck="false">
+      <button class="lobby-btn lbtn-purple" onclick="doCreateRoom()">CREATE &amp; WAIT</button>
+      <button class="lobby-btn lbtn-gray"   onclick="lobbyBack()">← BACK</button>
+      <div class="lobby-error" id="err-create"></div>
+    </div>
+
+    <!-- View: join -->
+    <div class="lv" id="lv-join">
+      <input class="lobby-input" id="inp-join" maxlength="12" placeholder="ROOM NAME" autocomplete="off" spellcheck="false">
+      <button class="lobby-btn lbtn-cyan" onclick="doJoinRoom()">JOIN BATTLE</button>
+      <button class="lobby-btn lbtn-gray" onclick="lobbyBack()">← BACK</button>
+      <div class="lobby-error" id="err-join"></div>
+    </div>
+
+    <!-- View: waiting (P1 waits for P2) -->
+    <div class="lv" id="lv-waiting">
+      <div class="lobby-status" id="waiting-status">Waiting for opponent…</div>
+      <div class="lobby-code-display" id="disp-code"></div>
+      <div class="lobby-hint">Share this room name with your opponent.<br>They enter it under JOIN ROOM.</div>
+      <button class="lobby-btn lbtn-gray" onclick="lobbyBack()">← CANCEL</button>
+    </div>
+
+    <!-- View: connecting (P2 dials P1) -->
+    <div class="lv" id="lv-connecting">
+      <div class="lobby-status" id="connecting-status">Connecting…</div>
+      <button class="lobby-btn lbtn-gray" onclick="lobbyBack()">← CANCEL</button>
+    </div>
+
+  </div>
+</div><!-- #lobby -->
+
+<!-- Fullscreen toggle -->
+<button id="fs-btn" title="Toggle fullscreen" onclick="toggleFullscreen()">&#x26F6;</button>
+
+<script>
+// ═══════════════════════════════════════════════════════════════
+//   FULLSCREEN + SCALE
+// ═══════════════════════════════════════════════════════════════
+function toggleFullscreen() {
+  if (!document.fullscreenElement && !document.webkitFullscreenElement) {
+    const el = document.documentElement;
+    const req = el.requestFullscreen || el.webkitRequestFullscreen;
+    if (req) req.call(el).catch(()=>{});
+  } else {
+    const ex = document.exitFullscreen || document.webkitExitFullscreen;
+    if (ex) ex.call(document);
+  }
+}
+
+function scaleCanvas() {
+  const canvas  = document.getElementById('gameCanvas');
+  const cw = canvas.width;
+  const ch = canvas.height;
+  const vw = window.innerWidth;
+  const vh = window.innerHeight;
+  const mobile = vw < 700;
+
+  let availW, availH, maxScale;
+  if (mobile) {
+    availW   = vw;
+    availH   = vh;
+    maxScale = 2.0;           // allow upscaling on phones/tablets
+  } else {
+    availW   = vw  - 32;
+    availH   = vh  - 80;      // leave room for title strip + btn row
+    maxScale = 1.0;           // pixel-crisp on desktop
+  }
+  const s = Math.min(availW / cw, availH / ch, maxScale);
+  canvas.style.width  = (cw * s) + 'px';
+  canvas.style.height = (ch * s) + 'px';
+}
+
+window.addEventListener('resize', scaleCanvas);
+document.addEventListener('fullscreenchange',       scaleCanvas);
+document.addEventListener('webkitfullscreenchange', scaleCanvas);
+scaleCanvas();
+
+document.addEventListener('fullscreenchange',       updateFsIcon);
+document.addEventListener('webkitfullscreenchange', updateFsIcon);
+function updateFsIcon() {
+  const btn = document.getElementById('fs-btn');
+  if (!btn) return;
+  btn.innerHTML = (document.fullscreenElement || document.webkitFullscreenElement)
+    ? '&#x2715;' : '&#x26F6;';
+}
+
+// ═══════════════════════════════════════════════════════════════
+//   WEB AUDIO  (TODO-17)
+// ═══════════════════════════════════════════════════════════════
+let actx = null;
+function initAudio() {
+  if (!actx) { try { actx = new (window.AudioContext || window.webkitAudioContext)(); } catch(e){} }
+}
+
+function tone(freq, dur, type, vol, detuneHz) {
+  if (!actx) return;
+  const o = actx.createOscillator();
+  const g = actx.createGain();
+  o.connect(g); g.connect(actx.destination);
+  o.type = type || 'square';
+  o.frequency.value = freq;
+  if (detuneHz) {
+    const o2 = actx.createOscillator();
+    o2.connect(g); o2.type = type || 'square';
+    o2.frequency.value = freq + detuneHz;
+    o2.start(actx.currentTime); o2.stop(actx.currentTime + dur);
+  }
+  g.gain.setValueAtTime(vol || 0.07, actx.currentTime);
+  g.gain.exponentialRampToValueAtTime(0.001, actx.currentTime + dur);
+  o.start(actx.currentTime); o.stop(actx.currentTime + dur);
+}
+
+const snd = {
+  correct  : () => {
+    tone(660, 0.06, 'sine', 0.10);
+    setTimeout(() => tone(880, 0.09, 'sine', 0.09), 80);
+  },
+  wrong    : () => {
+    tone(160, 0.18, 'sawtooth', 0.10);
+    setTimeout(() => tone(110, 0.14, 'sawtooth', 0.08), 90);
+  },
+  attack   : () => tone(440, 0.07, 'square', 0.06),
+  hit      : () => {
+    tone(180, 0.12, 'sawtooth', 0.10);
+    setTimeout(() => tone(130, 0.10, 'sawtooth', 0.07), 60);
+  },
+  special  : () => {
+    [330,440,550,660,880].forEach((f,i) => setTimeout(() => tone(f, 0.09, 'sine', 0.09), i*60));
+    setTimeout(() => tone(1320, 0.25, 'sine', 0.12), 320);
+  },
+  tick     : () => tone(1200, 0.04, 'sine', 0.06),
+  victory  : () => {
+    [440,550,660,880,1100].forEach((f,i) => setTimeout(() => tone(f, 0.09, 'sine', 0.10), i*100));
+  },
+  defeat   : () => {
+    [440,330,220].forEach((f,i) => setTimeout(() => tone(f, 0.18, 'sawtooth', 0.08), i*180));
+  },
+  start    : () => {
+    [440,550,660,880].forEach((f,i) => setTimeout(() => tone(f, 0.07, 'square', 0.07), i*90));
+  },
+};
+
+// ═══════════════════════════════════════════════════════════════
+//   BGM — Original synthesised fighting music (TASK-04)
+//   Loosely D-minor, 148 BPM, 16th-note step sequencer,
+//   32-step melody + 16-step bass + kick / snare / hi-hat.
+// ═══════════════════════════════════════════════════════════════
+const bgm = (() => {
+  // BUG-07 fix: do NOT create a separate AudioContext.
+  // bgmCtx is set to the shared global actx in start() so that BGM
+  // always uses a context that was unlocked by a real user gesture,
+  // avoiding autoplay-policy failures on iOS Safari in 2P mode.
+  let bgmCtx = null, running = false, schedId = null;
+  let step = 0, nextT = 0;
+
+  const BPM  = 148;
+  const STEP = 60 / BPM / 4;
+  const LOOK = 0.12;
+  const TICK = 50;
+
+  const N = {
+    D2:73.4,  A2:110,  G2:98,   F2:87.3,  Bb2:116.5, C3:130.8, D3:146.8,
+    D4:293.7, F4:349.2,G4:392,  A4:440,   Bb4:466.2, C5:523.3, D5:587.3,
+    E5:659.3, F5:698.5,G5:784,  A5:880,   C6:1046.5
+  };
+
+  const BASS=[
+    N.D2,0,0,N.D2, N.A2,0,N.A2,0,
+    N.G2,0,0,N.G2, N.C3,0,N.Bb2,0
+  ];
+
+  const MELO=[
+    N.D5,0,N.F5,0, N.A5,0,N.F5,0,
+    N.E5,0,N.D5,0, N.C5,0,N.D5,0,
+    N.A4,0,N.C5,0, N.D5,0,N.E5,0,
+    N.F5,0,N.A5,0, N.G5,0,0,0
+  ];
+
+  function kick(t) {
+    const o=bgmCtx.createOscillator(), g=bgmCtx.createGain();
+    o.connect(g); g.connect(bgmCtx.destination);
+    o.frequency.setValueAtTime(160,t);
+    o.frequency.exponentialRampToValueAtTime(28,t+0.08);
+    g.gain.setValueAtTime(0.50,t);
+    g.gain.exponentialRampToValueAtTime(0.001,t+0.12);
+    o.start(t); o.stop(t+0.13);
+  }
+
+  function snare(t) {
+    const buf=bgmCtx.createBuffer(1,Math.ceil(bgmCtx.sampleRate*0.18),bgmCtx.sampleRate);
+    const d=buf.getChannelData(0);
+    for(let i=0;i<d.length;i++) d[i]=Math.random()*2-1;
+    const src=bgmCtx.createBufferSource(); src.buffer=buf;
+    const bp=bgmCtx.createBiquadFilter(); bp.type='bandpass';
+    bp.frequency.value=1400; bp.Q.value=0.6;
+    const g=bgmCtx.createGain();
+    src.connect(bp); bp.connect(g); g.connect(bgmCtx.destination);
+    g.gain.setValueAtTime(0.26,t);
+    g.gain.exponentialRampToValueAtTime(0.001,t+0.16);
+    src.start(t); src.stop(t+0.18);
+  }
+
+  function hihat(t) {
+    const buf=bgmCtx.createBuffer(1,Math.ceil(bgmCtx.sampleRate*0.04),bgmCtx.sampleRate);
+    const d=buf.getChannelData(0);
+    for(let i=0;i<d.length;i++) d[i]=Math.random()*2-1;
+    const src=bgmCtx.createBufferSource(); src.buffer=buf;
+    const hp=bgmCtx.createBiquadFilter(); hp.type='highpass'; hp.frequency.value=7000;
+    const g=bgmCtx.createGain();
+    src.connect(hp); hp.connect(g); g.connect(bgmCtx.destination);
+    g.gain.setValueAtTime(0.10,t);
+    g.gain.exponentialRampToValueAtTime(0.001,t+0.03);
+    src.start(t); src.stop(t+0.04);
+  }
+
+  function note(freq,t,dur,type,vol) {
+    const o=bgmCtx.createOscillator(), g=bgmCtx.createGain();
+    o.type=type; o.connect(g); g.connect(bgmCtx.destination);
+    o.frequency.setValueAtTime(freq,t);
+    g.gain.setValueAtTime(vol,t);
+    g.gain.exponentialRampToValueAtTime(0.001,t+dur-0.01);
+    o.start(t); o.stop(t+dur);
+  }
+
+  function schedule() {
+    if (!running) return;
+    while (nextT < bgmCtx.currentTime + LOOK) {
+      const s16 = step % 16;
+      const s32 = step % 32;
+      const t   = nextT;
+
+      if (BASS[s16])  note(BASS[s16], t, STEP*1.4, 'sawtooth', 0.09);
+      if (MELO[s32])  note(MELO[s32], t, STEP*0.8, 'square',   0.07);
+      if (s16===0||s16===8)  kick(t);
+      if (s16===4||s16===12) snare(t);
+      if (s16%2===0)         hihat(t);
+
+      step++;
+      nextT += STEP;
+    }
+    schedId = setTimeout(schedule, TICK);
+  }
+
+  return {
+    start() {
+      if (running) return;
+      // Reuse the shared SFX AudioContext (already unlocked by user gesture)
+      initAudio();
+      bgmCtx = actx;
+      if (!bgmCtx) return;   // initAudio failed (browser blocked)
+      if (bgmCtx.state === 'suspended') bgmCtx.resume();
+      step = 0;
+      nextT = bgmCtx.currentTime + 0.05;
+      running = true;
+      schedule();
+    },
+    stop() {
+      running = false;
+      if (schedId) { clearTimeout(schedId); schedId = null; }
+    }
+  };
+})();
+
+const canvas = document.getElementById('gameCanvas');
+const ctx    = canvas.getContext('2d');
+const CW     = canvas.width;
+const CH     = canvas.height;
+
+// ═══════════════════════════════════════════════════════════════
+//   CONSTANTS
+// ═══════════════════════════════════════════════════════════════
+const PEER_PREFIX   = 'mathB-';
+const MAX_HP        = 500;
+const MAX_MANA      = 100;
+const BLACKOUT_MS   = 3000;
+const BROADCAST_MS  = 50;     // 20Hz
+
+// ── Damage table by combo tier ──────────────────────────────────
+// tier: 0=light, 1=light-med, 2=medium, 3=heavy, 4=max
+const DAMAGE_TABLE = [8, 10, 14, 20, 28];
+const MANA_TABLE   = [8, 10, 14, 18, 22];   // mana gained per correct answer
+const SPECIAL_DMG  = 35;
+const SPECIAL_MANA_BONUS = 30;
+
+// Combo → tier mapping
+function comboTier(combo) {
+  if (combo >= 20) return 4;   // a×b×c (1-digit)
+  if (combo >= 15) return 3;   // a×b   (1-digit)
+  if (combo >= 10) return 2;   // a+b+c
+  if (combo >= 5)  return 1;   // a+b    (2-digit)
+  return 0;                    // a+b    (1-digit)
+}
+
+// ── Animation pose IDs ──────────────────────────────────────────
+const A = {
+  IDLE    : 0,
+  ATTACK  : 1,   // light/medium attack
+  HEAVY   : 2,   // heavy attack
+  SPECIAL : 3,   // mana special
+  HIT     : 4,   // taking damage
+  DEFEAT  : 5,   // knocked out
+  WIN     : 6,   // victory
+};
+
+// ── Phase IDs ────────────────────────────────────────────────────
+// 'title'       – press start screen
+// 'lobby'       – redirects to overlay (2P)
+// 'countdown'   – 3→2→1→FIGHT!
+// 'waiting2p'   – P2 side waiting for countdown
+// 'playing'     – active game
+// 'over'        – match ended
+
+// ═══════════════════════════════════════════════════════════════
+//   MULTIPLAYER STATE
+// ═══════════════════════════════════════════════════════════════
+const mp = {
+  active      : false,
+  role        : null,     // 'p1' | 'p2'
+  peer        : null,
+  conn        : null,
+  roomCode    : '',
+  broadcastAcc: 0,
+  countdown   : 0,
+  // P2 answer sequence numbers (fire-once)
+  myAnswerSeq : 0,
+  p2AnswerSeq : 0,
+};
+
+// ═══════════════════════════════════════════════════════════════
+//   GAME STATE
+// ═══════════════════════════════════════════════════════════════
+// Fighter sub-object:
+//   hp, mana, combo, anim, animAcc, score (wins)
+//   question: { expr, answer, choices }
+//   blackout: ms remaining (cannot answer)
+//   localFlash: { color, acc } — optimistic UI feedback
+const gs = {
+  phase   : 'title',
+  timer   : 180,
+  lastTs  : 0,
+  winner  : null,   // 'p1' | 'p2' | 'draw'  — set by endMatch
+  p1 : {
+    hp: MAX_HP, mana: 0, combo: 0, wins: 0,
+    anim: A.IDLE, animAcc: 0,
+    question: null, blackout: 0,
+    localFlash: null,
+  },
+  p2 : {
+    hp: MAX_HP, mana: 0, combo: 0, wins: 0,
+    anim: A.IDLE, animAcc: 0,
+    question: null, blackout: 0,
+    localFlash: null,
+  },
+};
+
+// ── Convenient local fighter reference ──────────────────────────
+// In solo/P1: gs.p1 = me, gs.p2 = opponent (CPU or remote)
+// In P2 role: gs.p2 = me, gs.p1 = opponent
+function myFighter()  { return (mp.active && mp.role === 'p2') ? gs.p2 : gs.p1; }
+function oppFighter() { return (mp.active && mp.role === 'p2') ? gs.p1 : gs.p2; }
+
+// ═══════════════════════════════════════════════════════════════
+//   LAYOUT CONSTANTS
+// ═══════════════════════════════════════════════════════════════
+const LAY = {
+  // ── HUD row 1: HP bars + timer (y=10)
+  hudY      : 10,
+  hpH       : 16,
+  hpW       : 148,
+  hpX1      : 14,          // P1 HP bar left edge
+  hpX2      : CW-14-148,   // P2 HP bar left edge  (= 258)
+  // ── HUD row 2: mana bars (y=31)
+  manaY     : 31,
+  manaH     : 9,
+  manaW     : 148,
+  manaX1    : 14,
+  manaX2    : CW-14-148,
+  // ── Timer center
+  timerCX   : CW/2,        // 210
+  timerY    : 26,
+  // ── Fighter stage
+  stageTop  : 46,          // top of fighter area
+  stageBot  : 260,         // ground Y (feet)
+  p1X       : 105,         // P1 fighter centre X
+  p2X       : CW-105,      // P2 fighter centre X  (= 315)
+  // ── Question box
+  qBoxY     : 272,
+  qBoxH     : 62,
+  // ── Answer boxes (2×2 grid)
+  ansY      : 344,
+  ansGapX   : 8,
+  ansGapY   : 8,
+  ansPad    : 10,
+  ansH      : 130,         // height of each answer box
+};
+// Derived answer box width
+LAY.ansW = (CW - LAY.ansPad * 2 - LAY.ansGapX) / 2;
+
+// ── Gradient helpers ─────────────────────────────────────────────
+function hpColor(frac) {
+  if (frac > 0.5) return '#22dd44';
+  if (frac > 0.25) return '#ddcc22';
+  return '#ee2244';
+}
+function manaColor() { return '#4488ff'; }
+
+// ═══════════════════════════════════════════════════════════════
+//   RENDER — MAIN
+// ═══════════════════════════════════════════════════════════════
+function render() {
+  // ── Background ────────────────────────────────────────────────
+  ctx.fillStyle = '#0a0a1e';
+  ctx.fillRect(0, 0, CW, CH);
+
+  // Subtle background glow gradient
+  const bgGrad = ctx.createRadialGradient(CW/2, LAY.stageBot, 20, CW/2, LAY.stageBot, 280);
+  bgGrad.addColorStop(0, 'rgba(80,20,160,0.18)');
+  bgGrad.addColorStop(1, 'rgba(0,0,0,0)');
+  ctx.fillStyle = bgGrad;
+  ctx.fillRect(0, 0, CW, CH);
+
+  // ── HUD ───────────────────────────────────────────────────────
+  drawHUD();
+
+  // ── Stage divider ─────────────────────────────────────────────
+  ctx.strokeStyle = 'rgba(100,40,200,0.3)';
+  ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(0, LAY.stageTop); ctx.lineTo(CW, LAY.stageTop); ctx.stroke();
+
+  // ── Ground line ───────────────────────────────────────────────
+  const groundGrad = ctx.createLinearGradient(0, 0, CW, 0);
+  groundGrad.addColorStop(0,   'rgba(120,40,220,0)');
+  groundGrad.addColorStop(0.3, 'rgba(120,40,220,0.8)');
+  groundGrad.addColorStop(0.7, 'rgba(0,180,255,0.8)');
+  groundGrad.addColorStop(1,   'rgba(0,180,255,0)');
+  ctx.strokeStyle = groundGrad;
+  ctx.lineWidth = 2;
+  ctx.beginPath(); ctx.moveTo(30, LAY.stageBot); ctx.lineTo(CW-30, LAY.stageBot); ctx.stroke();
+
+  // ── Fighters (TODO-03 fills in; stub draws ellipses) ──────────
+  drawFighters();
+
+  // ── Question + answer boxes (TODO-04/05 fills in) ─────────────
+  drawQuestionArea();
+
+  // ── Phase overlays ────────────────────────────────────────────
+  drawOverlay();
+}
+
+// ─────────────────────────────────────────────────────────────────
+//   HUD — health bars, mana bars, timer, player labels
+// ─────────────────────────────────────────────────────────────────
+function drawHUD() {
+  // ── P1 label ──
+  ctx.fillStyle = '#c060ff';
+  ctx.font = 'bold 11px "Segoe UI", Arial';
+  ctx.textAlign = 'left';
+  ctx.fillText('P1', LAY.hpX1, LAY.hudY - 1);
+
+  // ── P2 / COM label ──
+  const p2Label = (mp.active) ? 'P2' : 'CPU';
+  ctx.textAlign = 'right';
+  ctx.fillStyle = '#ff6080';
+  ctx.fillText(p2Label, LAY.hpX2 + LAY.hpW, LAY.hudY - 1);
+  ctx.textAlign = 'left';
+
+  // ── P1 HP bar ──
+  drawBar(LAY.hpX1, LAY.hudY, LAY.hpW, LAY.hpH,
+          gs.p1.hp / MAX_HP, hpColor(gs.p1.hp / MAX_HP), '#1a0a2e');
+  // ── P2 HP bar (fills right-to-left for mirrored feel) ──
+  drawBarRTL(LAY.hpX2, LAY.hudY, LAY.hpW, LAY.hpH,
+             gs.p2.hp / MAX_HP, hpColor(gs.p2.hp / MAX_HP), '#1a0a2e');
+
+  // ── P1 Mana bar ──
+  drawBar(LAY.manaX1, LAY.manaY, LAY.manaW, LAY.manaH,
+          gs.p1.mana / MAX_MANA, '#4488ff', '#0a0a2e');
+  // ── P2 Mana bar (RTL) ──
+  drawBarRTL(LAY.manaX2, LAY.manaY, LAY.manaW, LAY.manaH,
+             gs.p2.mana / MAX_MANA, '#ff4488', '#0a0a2e');
+
+  // ── Mana label dots ──
+  ctx.fillStyle = '#3366cc';
+  ctx.font = '7px "Segoe UI", Arial';
+  ctx.fillText('MANA', LAY.manaX1, LAY.manaY + LAY.manaH + 8);
+  ctx.textAlign = 'right';
+  ctx.fillStyle = '#cc3355';
+  ctx.fillText('MANA', LAY.manaX2 + LAY.manaW, LAY.manaY + LAY.manaH + 8);
+  ctx.textAlign = 'left';
+
+  // ── Timer ──
+  const secs = Math.ceil(Math.max(gs.timer, 0));
+  const timerStr = String(secs).padStart(2, '0');
+  const timerAlpha = (gs.phase === 'playing' && gs.timer < 10 && Math.floor(Date.now() / 400) % 2 === 0) ? 0.4 : 1;
+  ctx.globalAlpha = timerAlpha;
+  ctx.font = 'bold 22px "Segoe UI", Arial';
+  ctx.textAlign = 'center';
+  ctx.fillStyle = gs.timer < 10 ? '#ff4444' : '#e0c0ff';
+  ctx.fillText(timerStr, LAY.timerCX, LAY.timerY);
+  ctx.globalAlpha = 1;
+  ctx.textAlign = 'left';
+
+  // ── Combo indicators ──
+  if (gs.phase === 'playing' || gs.phase === 'over') {
+    drawComboIndicator(LAY.hpX1 + 2, LAY.manaY + LAY.manaH + 11, gs.p1.combo, '#c060ff');
+    const c2W = comboTextWidth(gs.p2.combo);
+    drawComboIndicator(LAY.hpX2 + LAY.hpW - c2W - 2, LAY.manaY + LAY.manaH + 11, gs.p2.combo, '#ff6080');
+  }
+}
+
+function drawBar(x, y, w, h, frac, fillColor, bgColor) {
+  // Track background
+  ctx.fillStyle = bgColor;
+  ctx.beginPath(); roundRect(x, y, w, h, 4); ctx.fill();
+  // Border
+  ctx.strokeStyle = 'rgba(255,255,255,0.12)';
+  ctx.lineWidth = 1;
+  ctx.beginPath(); roundRect(x, y, w, h, 4); ctx.stroke();
+  // Fill
+  const fw = Math.max(0, frac) * (w - 2);
+  if (fw > 0) {
+    ctx.fillStyle = fillColor;
+    ctx.beginPath(); roundRect(x + 1, y + 1, fw, h - 2, 3); ctx.fill();
+    // Inner highlight
+    ctx.fillStyle = 'rgba(255,255,255,0.2)';
+    ctx.fillRect(x + 1, y + 1, fw, Math.floor((h-2)/2));
+  }
+}
+
+function drawBarRTL(x, y, w, h, frac, fillColor, bgColor) {
+  ctx.fillStyle = bgColor;
+  ctx.beginPath(); roundRect(x, y, w, h, 4); ctx.fill();
+  ctx.strokeStyle = 'rgba(255,255,255,0.12)';
+  ctx.lineWidth = 1;
+  ctx.beginPath(); roundRect(x, y, w, h, 4); ctx.stroke();
+  const fw = Math.max(0, frac) * (w - 2);
+  if (fw > 0) {
+    const fx = x + w - 1 - fw;
+    ctx.fillStyle = fillColor;
+    ctx.beginPath(); roundRect(fx, y + 1, fw, h - 2, 3); ctx.fill();
+    ctx.fillStyle = 'rgba(255,255,255,0.2)';
+    ctx.fillRect(fx, y + 1, fw, Math.floor((h-2)/2));
+  }
+}
+
+function roundRect(x, y, w, h, r) {
+  ctx.moveTo(x + r, y);
+  ctx.lineTo(x + w - r, y);
+  ctx.arcTo(x + w, y, x + w, y + r, r);
+  ctx.lineTo(x + w, y + h - r);
+  ctx.arcTo(x + w, y + h, x + w - r, y + h, r);
+  ctx.lineTo(x + r, y + h);
+  ctx.arcTo(x, y + h, x, y + h - r, r);
+  ctx.lineTo(x, y + r);
+  ctx.arcTo(x, y, x + r, y, r);
+}
+
+function comboTextWidth(combo) {
+  if (combo < 2) return 0;
+  ctx.font = 'bold 9px "Segoe UI", Arial';
+  return ctx.measureText(combo + 'x COMBO').width;
+}
+
+function drawComboIndicator(x, y, combo, color) {
+  if (combo < 2) return;
+  ctx.font = 'bold 9px "Segoe UI", Arial';
+  ctx.fillStyle = color;
+  ctx.globalAlpha = 0.85;
+  ctx.fillText(combo + 'x COMBO', x, y);
+  ctx.globalAlpha = 1;
+}
+
+// ═══════════════════════════════════════════════════════════════
+//   FIGHTER  SPRITES  (TODO-03)
+//   Origin = fighter's feet-centre. Y goes UPWARD (negative).
+//   P1 faces right; P2 is drawn via ctx.scale(-1,1) to face left.
+// ═══════════════════════════════════════════════════════════════
+
+function drawFighters() {
+  // Stage glow
+  const sg = ctx.createRadialGradient(CW/2, LAY.stageBot, 0, CW/2, LAY.stageBot, 220);
+  sg.addColorStop(0,   'rgba(80,20,160,0.12)');
+  sg.addColorStop(1,   'rgba(0,0,0,0)');
+  ctx.fillStyle = sg;
+  ctx.fillRect(0, LAY.stageTop, CW, LAY.stageBot - LAY.stageTop);
+
+  const fy = LAY.stageBot;    // feet Y
+  drawFighter1(LAY.p1X, fy, gs.p1);
+  drawFighter2(LAY.p2X, fy, gs.p2);
+
+  // VS label (only on title or idle)
+  if (gs.phase === 'title' || gs.phase === 'countdown' || gs.phase === 'waiting2p') {
+    ctx.fillStyle = 'rgba(160,100,255,0.35)';
+    ctx.font = 'bold 16px "Segoe UI", Arial';
+    ctx.textAlign = 'center';
+    ctx.fillText('VS', CW/2, fy - 90);
+    ctx.textAlign = 'left';
+  }
+}
+
+// ── Draw helpers ─────────────────────────────────────────────────
+function Pg(pts, c) {
+  ctx.fillStyle = c;
+  ctx.beginPath();
+  ctx.moveTo(pts[0][0], pts[0][1]);
+  for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i][0], pts[i][1]);
+  ctx.closePath();
+  ctx.fill();
+}
+function Ci(x, y, r, c) {
+  ctx.fillStyle = c;
+  ctx.beginPath();
+  ctx.arc(x, y, r, 0, Math.PI * 2);
+  ctx.fill();
+}
+function Rc(x, y, w, h, c) { ctx.fillStyle = c; ctx.fillRect(x, y, w, h); }
+function Ln(x1, y1, x2, y2, c, lw) {
+  ctx.strokeStyle = c; ctx.lineWidth = lw || 2;
+  ctx.beginPath(); ctx.moveTo(x1,y1); ctx.lineTo(x2,y2); ctx.stroke();
+}
+
+// ── FIGHTER 1  (Purple Wizard) ────────────────────────────────────
+// Palette: robe=#7a20c0, trim=#cc80ff, skin=#ffd0a0, accent=#ffcc00
+const F1 = { robe:'#7a20c0', trim:'#cc80ff', skin:'#ffd0a0', hair:'#2a0060', acc:'#ffcc00', glow:'rgba(160,80,255,0.6)' };
+
+function drawFighter1(fx, fy, fighter) {
+  ctx.save();
+  ctx.translate(fx, fy);
+
+  // ground glow
+  const grd = ctx.createRadialGradient(0, 0, 2, 0, 0, 44);
+  grd.addColorStop(0, F1.glow); grd.addColorStop(1, 'transparent');
+  ctx.fillStyle = grd;
+  ctx.beginPath(); ctx.ellipse(0, -2, 44, 14, 0, 0, Math.PI * 2); ctx.fill();
+
+  switch (fighter.anim) {
+    case A.IDLE:    f1Idle();    break;
+    case A.ATTACK:  f1Attack();  break;
+    case A.HEAVY:   f1Heavy();   break;
+    case A.SPECIAL: f1Special(); break;
+    case A.HIT:     f1Hit();     break;
+    case A.DEFEAT:  f1Defeat();  break;
+    case A.WIN:     f1Win();     break;
+    default:        f1Idle();
+  }
+  ctx.restore();
+}
+
+function f1Idle() {
+  // Legs
+  Pg([[-10,-2],[-4,-2],[-5,-42],[-12,-42]], F1.robe);
+  Pg([[4,-2],[10,-2],[11,-42],[5,-42]], F1.robe);
+  // Robe body
+  Pg([[-14,-40],[14,-40],[12,-80],[-12,-80]], F1.robe);
+  // Robe trim
+  Pg([[-14,-40],[14,-40],[11,-56],[-11,-56]], F1.trim);
+  // Belt accent
+  Rc(-13,-62,26,5, F1.acc);
+  // Arms
+  Pg([[-12,-72],[-20,-68],[-24,-52],[-16,-52]], F1.robe);
+  Pg([[12,-72],[20,-68],[24,-52],[16,-52]], F1.robe);
+  // Hands
+  Ci(-24,-50, 6, F1.skin);
+  Ci(24,-50, 6, F1.skin);
+  // Head / neck
+  Rc(-5,-84,10,6, F1.skin);
+  Ci(0,-96, 16, F1.skin);
+  // Hair
+  Pg([[-15,-96],[15,-96],[12,-112],[-12,-112]], F1.hair);
+  Ci(0,-110, 8, F1.hair);
+  // Eyes
+  Ci(-5,-94, 2.5, '#2a0060'); Ci(5,-94, 2.5, '#2a0060');
+  // Staff
+  Ln(28,-52, 28,-112, F1.hair, 4);
+  Ci(28,-114, 7, F1.acc);
+}
+
+function f1Attack() {
+  // Same base but right arm extended in punch
+  Pg([[-10,-2],[-4,-2],[-5,-42],[-12,-42]], F1.robe);
+  Pg([[4,-2],[10,-2],[11,-42],[5,-42]], F1.robe);
+  Pg([[-14,-40],[14,-40],[12,-80],[-12,-80]], F1.robe);
+  Pg([[-14,-40],[14,-40],[11,-56],[-11,-56]], F1.trim);
+  Rc(-13,-62,26,5, F1.acc);
+  Pg([[-12,-72],[-20,-68],[-24,-52],[-16,-52]], F1.robe);
+  // Punching arm extended forward
+  Pg([[12,-70],[56,-58],[56,-50],[14,-62]], F1.robe);
+  Ci(58,-54, 7, F1.skin);
+  Ci(-24,-50, 6, F1.skin);
+  Rc(-5,-84,10,6, F1.skin);
+  Ci(0,-96, 16, F1.skin);
+  Pg([[-15,-96],[15,-96],[12,-112],[-12,-112]], F1.hair);
+  Ci(0,-110, 8, F1.hair);
+  Ci(-5,-94, 2.5, '#2a0060'); Ci(5,-94, 2.5, '#2a0060');
+  // Impact burst
+  ctx.strokeStyle = F1.acc; ctx.lineWidth = 3;
+  for (let i = 0; i < 5; i++) {
+    const a = (i/5)*Math.PI - Math.PI/2;
+    ctx.beginPath();
+    ctx.moveTo(58 + Math.cos(a)*8, -54 + Math.sin(a)*8);
+    ctx.lineTo(58 + Math.cos(a)*18, -54 + Math.sin(a)*18);
+    ctx.stroke();
+  }
+}
+
+function f1Heavy() {
+  // Leaping forward heavy strike
+  Pg([[-8,0],[6,0],[10,-36],[0,-40]], F1.robe);
+  Pg([[8,0],[18,0],[22,-30],[14,-36]], F1.robe);
+  Pg([[-10,-38],[14,-38],[18,-76],[-6,-80]], F1.robe);
+  Pg([[-10,-38],[14,-38],[10,-54],[-8,-54]], F1.trim);
+  Rc(-9,-60,22,5, F1.acc);
+  // Both arms raised for overhead smash
+  Pg([[-6,-74],[46,-56],[43,-48],[6,-66]], F1.robe);
+  Pg([[-6,-74],[-14,-56],[-18,-46],[-8,-68]], F1.robe);
+  Ci(48,-52, 7, F1.skin); Ci(-20,-42, 6, F1.skin);
+  Rc(-4,-82,8,6, F1.skin);
+  Ci(0,-92, 15, F1.skin);
+  Pg([[-14,-92],[14,-92],[11,-108],[-11,-108]], F1.hair);
+  Ci(0,-106, 7, F1.hair);
+  Ci(-5,-90, 2.5, '#2a0060'); Ci(5,-90, 2.5, '#2a0060');
+  // Big shockwave
+  ctx.strokeStyle = '#ffcc00'; ctx.lineWidth = 4;
+  ctx.globalAlpha = 0.85;
+  ctx.beginPath(); ctx.arc(50,-50,20,0,Math.PI*2); ctx.stroke();
+  ctx.lineWidth = 2; ctx.globalAlpha = 0.5;
+  ctx.beginPath(); ctx.arc(50,-50,30,0,Math.PI*2); ctx.stroke();
+  ctx.globalAlpha = 1;
+}
+
+function f1Special() {
+  f1Idle();
+  // Full-body magic burst aura
+  ctx.strokeStyle = F1.acc; ctx.lineWidth = 3;
+  for (let i = 0; i < 8; i++) {
+    const a = (i/8)*Math.PI*2;
+    const r1 = 50, r2 = 80;
+    ctx.globalAlpha = 0.7;
+    ctx.beginPath();
+    ctx.moveTo(Math.cos(a)*r1, Math.sin(a)*r1 - 55);
+    ctx.lineTo(Math.cos(a)*r2, Math.sin(a)*r2 - 55);
+    ctx.stroke();
+  }
+  ctx.globalAlpha = 1;
+  // Rune circle
+  ctx.strokeStyle = '#cc80ff'; ctx.lineWidth = 2;
+  ctx.globalAlpha = 0.6;
+  ctx.beginPath(); ctx.arc(0,-55,60,0,Math.PI*2); ctx.stroke();
+  ctx.globalAlpha = 1;
+  // Energy ball at staff tip
+  const ballGrad = ctx.createRadialGradient(28,-114,2,28,-114,14);
+  ballGrad.addColorStop(0,'#ffffff'); ballGrad.addColorStop(0.4,'#ffcc00'); ballGrad.addColorStop(1,'rgba(255,180,0,0)');
+  ctx.fillStyle = ballGrad;
+  ctx.beginPath(); ctx.arc(28,-114,14,0,Math.PI*2); ctx.fill();
+}
+
+function f1Hit() {
+  // Recoil backwards
+  Pg([[6,-2],[18,-2],[14,-40],[4,-42]], F1.robe);
+  Pg([[-8,-2],[4,-2],[-2,-38],[-12,-38]], F1.robe);
+  Pg([[-14,-38],[14,-38],[8,-76],[-12,-78]], F1.robe);
+  Pg([[-14,-38],[14,-38],[10,-52],[-10,-54]], F1.trim);
+  Rc(-11,-60,24,5, F1.acc);
+  Pg([[-12,-70],[-22,-60],[-26,-44],[-16,-48]], F1.robe);
+  Pg([[10,-70],[18,-62],[20,-46],[12,-50]], F1.robe);
+  Ci(-27,-42, 6, F1.skin); Ci(21,-44, 6, F1.skin);
+  Rc(-4,-82,8,6, F1.skin);
+  Ci(0,-92, 16, F1.skin);
+  Pg([[-15,-92],[15,-92],[12,-108],[-12,-108]], F1.hair);
+  Ci(0,-106, 8, F1.hair);
+  Ci(-5,-90, 2.5, '#2a0060'); Ci(5,-90, 2.5, '#2a0060');
+  // Hit flash
+  ctx.fillStyle = 'rgba(255,200,80,0.35)';
+  ctx.beginPath(); ctx.ellipse(0,-55,36,52,0,0,Math.PI*2); ctx.fill();
+  ctx.fillStyle = '#ffcc00';
+  ctx.font = 'bold 16px monospace'; ctx.textAlign = 'center';
+  ctx.fillText('✦', 30,-60); ctx.textAlign = 'left';
+}
+
+function f1Defeat() {
+  // Fallen on the ground
+  Pg([[-50,-8],[20,-8],[22,-2],[-52,-2]], F1.robe);
+  Pg([[10,-8],[22,-8],[24,-2],[12,-2]], F1.robe);
+  Pg([[-22,-8],[-22,-24],[-10,-24],[-10,-8]], F1.robe);
+  Pg([[2,-8],[2,-22],[14,-22],[14,-8]], F1.robe);
+  Ci(-52,-4, 14, F1.skin);
+  ctx.fillStyle = F1.hair;
+  ctx.font = 'bold 18px monospace'; ctx.textAlign = 'center';
+  ctx.fillText('★', -52,-22); ctx.textAlign = 'left';
+}
+
+function f1Win() {
+  // Legs
+  Pg([[-10,-2],[-4,-2],[-5,-42],[-12,-42]], F1.robe);
+  Pg([[4,-2],[10,-2],[11,-42],[5,-42]], F1.robe);
+  // Robe body + trim
+  Pg([[-14,-40],[14,-40],[12,-80],[-12,-80]], F1.robe);
+  Pg([[-14,-40],[14,-40],[11,-56],[-11,-56]], F1.trim);
+  Rc(-13,-62,26,5, F1.acc);
+  // Neck
+  Rc(-5,-84,10,6, F1.skin);
+  // Arms raised in V — drawn BEFORE head so helmet covers the join
+  Pg([[-12,-72],[-28,-106],[-20,-110],[-4,-74]], F1.robe);
+  Pg([[12,-72],[28,-106],[20,-110],[4,-74]], F1.robe);
+  Ci(-24,-112, 7, F1.skin);
+  Ci(24,-112, 7, F1.skin);
+  // Head on top
+  Ci(0,-96, 16, F1.skin);
+  Pg([[-15,-96],[15,-96],[12,-112],[-12,-112]], F1.hair);
+  Ci(0,-110, 8, F1.hair);
+  Ci(-5,-94, 2.5, '#2a0060'); Ci(5,-94, 2.5, '#2a0060');
+  // Sparkles
+  ctx.fillStyle = F1.acc;
+  ctx.font = '14px monospace'; ctx.textAlign = 'center';
+  ctx.fillText('✨', -36,-118); ctx.fillText('✨', 36,-118);
+  ctx.textAlign = 'left';
+}
+
+// ── FIGHTER 2  (Red Warrior) ──────────────────────────────────────
+// Palette: armor=#cc2244, plates=#ff6680, skin=#ffd0a0, acc=#ffaa00, glow
+const F2 = { armor:'#cc2244', plates:'#ff6680', skin:'#ffd0a0', hair:'#1a0808', acc:'#ffaa00', glow:'rgba(255,80,80,0.5)' };
+
+function drawFighter2(fx, fy, fighter) {
+  ctx.save();
+  ctx.translate(fx, fy);
+  ctx.scale(-1, 1);   // mirror so fighter2 faces left
+
+  // ground glow
+  const grd = ctx.createRadialGradient(0, 0, 2, 0, 0, 44);
+  grd.addColorStop(0, F2.glow); grd.addColorStop(1, 'transparent');
+  ctx.fillStyle = grd;
+  ctx.beginPath(); ctx.ellipse(0, -2, 44, 14, 0, 0, Math.PI * 2); ctx.fill();
+
+  switch (fighter.anim) {
+    case A.IDLE:    f2Idle();    break;
+    case A.ATTACK:  f2Attack();  break;
+    case A.HEAVY:   f2Heavy();   break;
+    case A.SPECIAL: f2Special(); break;
+    case A.HIT:     f2Hit();     break;
+    case A.DEFEAT:  f2Defeat();  break;
+    case A.WIN:     f2Win();     break;
+    default:        f2Idle();
+  }
+  ctx.restore();
+}
+
+function f2Idle() {
+  // Boots
+  Pg([[-11,0],[-3,0],[-2,-38],[-10,-40]], F2.hair);
+  Pg([[3,0],[11,0],[10,-38],[2,-40]], F2.hair);
+  // Armored legs
+  Pg([[-10,-38],[-2,-38],[-2,-50],[-10,-50]], F2.armor);
+  Pg([[2,-38],[10,-38],[10,-50],[2,-50]], F2.armor);
+  // Torso breastplate
+  Pg([[-14,-50],[14,-50],[12,-90],[-12,-90]], F2.armor);
+  Pg([[-14,-50],[14,-50],[11,-66],[-11,-66]], F2.plates);
+  // Shoulder guards
+  Pg([[-14,-72],[-28,-68],[-30,-58],[-16,-62]], F2.armor);
+  Pg([[14,-72],[28,-68],[30,-58],[16,-62]], F2.armor);
+  // Arms / gauntlets
+  Pg([[-28,-68],[-28,-52],[-20,-52],[-20,-68]], F2.armor);
+  Pg([[20,-68],[28,-52],[28,-68],[20,-68]], F2.armor);
+  Ci(-24,-50, 7, F2.skin); Ci(24,-50, 7, F2.skin);
+  // Neck
+  Rc(-5,-94,10,6, F2.skin);
+  // Head (helmet)
+  Ci(0,-106, 16, F2.armor);
+  Pg([[-16,-106],[16,-106],[14,-120],[-14,-120]], F2.armor);
+  // Visor
+  Rc(-10,-110,20,6, F2.plates);
+  // Crest
+  Pg([[-4,-120],[4,-120],[2,-134],[-2,-134]], F2.acc);
+}
+
+function f2Attack() {
+  // Boots (planted stance, body leans into the punch)
+  Pg([[-11,0],[-3,0],[-2,-40],[-10,-42]], F2.hair);
+  Pg([[3,0],[11,0],[10,-40],[2,-42]], F2.hair);
+  // Armored legs
+  Pg([[-10,-40],[-2,-40],[-2,-52],[-10,-52]], F2.armor);
+  Pg([[2,-40],[10,-40],[10,-52],[2,-52]], F2.armor);
+  // Torso leaning into punch
+  Pg([[-12,-52],[14,-52],[18,-90],[-8,-90]], F2.armor);
+  Pg([[-12,-52],[14,-52],[14,-68],[-8,-68]], F2.plates);
+  // Shoulder guards
+  Pg([[-12,-72],[-26,-68],[-28,-58],[-14,-62]], F2.armor);
+  Pg([[16,-72],[30,-68],[32,-60],[18,-64]], F2.armor);
+  // Left arm pulled back (balance)
+  Pg([[-26,-68],[-26,-52],[-18,-52],[-18,-68]], F2.armor);
+  Ci(-22,-50, 7, F2.skin);
+  // Right arm PUNCH — extends far forward (mirrors to face P1)
+  Pg([[18,-78],[22,-72],[70,-56],[66,-48]], F2.armor);
+  // Bright gauntlet + oversized fist
+  Pg([[64,-60],[78,-56],[78,-46],[64,-50]], F2.plates);
+  Ci(80,-53, 11, F2.plates);
+  // Neck + head on top
+  Rc(-4,-92,10,6, F2.skin);
+  Ci(0,-104, 16, F2.armor);
+  Pg([[-16,-104],[16,-104],[14,-118],[-14,-118]], F2.armor);
+  Rc(-10,-108,20,6, F2.plates);
+  Pg([[-4,-118],[4,-118],[2,-132],[-2,-132]], F2.acc);
+  // Large impact starburst — very visible
+  ctx.strokeStyle = F2.acc; ctx.lineWidth = 4;
+  for (let i = 0; i < 7; i++) {
+    const a = (i / 7) * Math.PI * 2;
+    ctx.beginPath();
+    ctx.moveTo(80 + Math.cos(a)*13, -53 + Math.sin(a)*13);
+    ctx.lineTo(80 + Math.cos(a)*30, -53 + Math.sin(a)*30);
+    ctx.stroke();
+  }
+  ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 3;
+  ctx.globalAlpha = 0.65;
+  ctx.beginPath(); ctx.arc(80, -53, 20, 0, Math.PI * 2); ctx.stroke();
+  ctx.globalAlpha = 1;
+}
+
+function f2Heavy() {
+  // Jump-down slam
+  Pg([[-8,0],[4,0],[6,-34],[-4,-38]], F2.hair);
+  Pg([[6,0],[16,0],[18,-30],[8,-34]], F2.hair);
+  Pg([[-12,-44],[14,-44],[14,-82],[-10,-84]], F2.armor);
+  Pg([[-12,-44],[14,-44],[12,-60],[-10,-62]], F2.plates);
+  // Raised arms for overhead slam
+  Pg([[-10,-78],[44,-52],[40,-44],[-8,-70]], F2.armor);
+  Pg([[-10,-78],[-20,-56],[-24,-46],[-10,-68]], F2.armor);
+  Ci(46,-48, 8, F2.skin); Ci(-26,-42, 7, F2.skin);
+  Rc(-4,-86,8,6, F2.skin);
+  Ci(0,-96, 15, F2.armor);
+  Pg([[-15,-96],[15,-96],[12,-110],[-12,-110]], F2.armor);
+  Rc(-10,-100,20,6, F2.plates);
+  // Shockwave ring
+  ctx.strokeStyle = F2.acc; ctx.lineWidth = 4;
+  ctx.globalAlpha = 0.9;
+  ctx.beginPath(); ctx.arc(48,-46,22,0,Math.PI*2); ctx.stroke();
+  ctx.lineWidth = 2; ctx.globalAlpha = 0.5;
+  ctx.beginPath(); ctx.arc(48,-46,34,0,Math.PI*2); ctx.stroke();
+  ctx.globalAlpha = 1;
+}
+
+function f2Special() {
+  f2Idle();
+  // Blazing fire aura
+  ctx.strokeStyle = '#ff4400'; ctx.lineWidth = 3;
+  for (let i = 0; i < 10; i++) {
+    const a = (i/10)*Math.PI*2;
+    ctx.globalAlpha = 0.6 + Math.random()*0.3;
+    ctx.beginPath();
+    ctx.moveTo(Math.cos(a)*46, Math.sin(a)*46 - 60);
+    ctx.lineTo(Math.cos(a)*70, Math.sin(a)*70 - 60);
+    ctx.stroke();
+  }
+  ctx.globalAlpha = 1;
+  // Inner red glow
+  const fireGrad = ctx.createRadialGradient(0,-60,10,0,-60,50);
+  fireGrad.addColorStop(0,'rgba(255,80,0,0.5)');
+  fireGrad.addColorStop(1,'rgba(255,80,0,0)');
+  ctx.fillStyle = fireGrad;
+  ctx.beginPath(); ctx.arc(0,-60,50,0,Math.PI*2); ctx.fill();
+}
+
+function f2Hit() {
+  // Stagger back
+  Pg([[6,-2],[18,-2],[14,-38],[2,-40]], F2.hair);
+  Pg([[-8,-2],[2,-2],[-4,-36],[-14,-38]], F2.hair);
+  Pg([[-14,-44],[14,-44],[10,-82],[-12,-84]], F2.armor);
+  Pg([[-14,-44],[14,-44],[11,-58],[-11,-60]], F2.plates);
+  Pg([[-14,-70],[-26,-62],[-30,-50],[-18,-56]], F2.armor);
+  Pg([[12,-70],[24,-60],[28,-48],[16,-54]], F2.armor);
+  Ci(-27,-46, 7, F2.skin); Ci(25,-44, 7, F2.skin);
+  Rc(-4,-86,8,6, F2.skin);
+  Ci(0,-96, 16, F2.armor);
+  Pg([[-15,-96],[15,-96],[12,-110],[-12,-110]], F2.armor);
+  Rc(-10,-100,20,6, F2.plates);
+  // Hit flash
+  ctx.fillStyle = 'rgba(255,100,0,0.3)';
+  ctx.beginPath(); ctx.ellipse(0,-55,36,52,0,0,Math.PI*2); ctx.fill();
+  ctx.fillStyle = F2.acc;
+  ctx.font = 'bold 16px monospace'; ctx.textAlign = 'center';
+  ctx.fillText('✦', 30,-60); ctx.textAlign = 'left';
+}
+
+function f2Defeat() {
+  Pg([[-50,-8],[20,-8],[22,-2],[-52,-2]], F2.armor);
+  Pg([[10,-8],[22,-8],[24,-2],[12,-2]], F2.armor);
+  Pg([[-22,-8],[-22,-24],[-10,-24],[-10,-8]], F2.armor);
+  Pg([[2,-8],[2,-22],[14,-22],[14,-8]], F2.armor);
+  Ci(-52,-4, 14, F2.skin);
+  ctx.fillStyle = F2.acc;
+  ctx.font = 'bold 18px monospace'; ctx.textAlign = 'center';
+  ctx.fillText('★', -52,-22); ctx.textAlign = 'left';
+}
+
+function f2Win() {
+  // Boots
+  Pg([[-11,0],[-3,0],[-2,-38],[-10,-40]], F2.hair);
+  Pg([[3,0],[11,0],[10,-38],[2,-40]], F2.hair);
+  // Armored legs
+  Pg([[-10,-38],[-2,-38],[-2,-50],[-10,-50]], F2.armor);
+  Pg([[2,-38],[10,-38],[10,-50],[2,-50]], F2.armor);
+  // Torso
+  Pg([[-14,-50],[14,-50],[12,-90],[-12,-90]], F2.armor);
+  Pg([[-14,-50],[14,-50],[11,-66],[-11,-66]], F2.plates);
+  // Shoulder guards
+  Pg([[-14,-72],[-28,-68],[-30,-58],[-16,-62]], F2.armor);
+  Pg([[14,-72],[28,-68],[30,-58],[16,-62]], F2.armor);
+  // Arms raised in V — drawn BEFORE head; no hanging gauntlets drawn
+  Pg([[-28,-66],[-36,-106],[-28,-110],[-20,-68]], F2.armor);
+  Pg([[20,-68],[28,-110],[36,-106],[28,-66]], F2.armor);
+  Ci(-32,-112, 8, F2.skin);
+  Ci(32,-112, 8, F2.skin);
+  // Neck + head on top
+  Rc(-5,-94,10,6, F2.skin);
+  Ci(0,-106, 16, F2.armor);
+  Pg([[-16,-106],[16,-106],[14,-120],[-14,-120]], F2.armor);
+  Rc(-10,-110,20,6, F2.plates);
+  Pg([[-4,-120],[4,-120],[2,-134],[-2,-134]], F2.acc);
+  // Sparkles
+  ctx.fillStyle = F2.acc;
+  ctx.font = '14px monospace'; ctx.textAlign = 'center';
+  ctx.fillText('✨', -40,-118); ctx.fillText('✨', 40,-118);
+  ctx.textAlign = 'left';
+}
+
+// ═══════════════════════════════════════════════════════════════
+//   QUESTION SYSTEM  (TODO-04)
+//   generateQuestion(combo) → { expr, answer, choices[4] }
+//   Difficulty scales with combo tier (0–4).
+// ═══════════════════════════════════════════════════════════════
+
+function rnd(min, max) { return Math.floor(Math.random() * (max - min + 1)) + min; }
+
+function generateQuestion(combo) {
+  const tier = comboTier(combo);
+  let expr, answer;
+
+  if (tier === 0) {
+    // Tier 0 (combo 0–4): 1-digit addition  a + b
+    const a = rnd(1, 9), b = rnd(1, 9);
+    expr   = a + ' + ' + b;
+    answer = a + b;
+  } else if (tier === 1) {
+    // Tier 1 (combo 5–9): 2-digit addition  a + b
+    const a = rnd(10, 99), b = rnd(10, 99);
+    expr   = a + ' + ' + b;
+    answer = a + b;
+  } else if (tier === 2) {
+    // Tier 2 (combo 10–14): three-term addition  a + b + c
+    const a = rnd(10, 79), b = rnd(10, 79), c = rnd(10, 79);
+    expr   = a + ' + ' + b + ' + ' + c;
+    answer = a + b + c;
+  } else if (tier === 3) {
+    // Tier 3 (combo 15–19): 1-digit multiplication  a × b
+    const a = rnd(2, 9), b = rnd(2, 9);
+    expr   = a + ' × ' + b;
+    answer = a * b;
+  } else {
+    // Tier 4 (combo 20+): 1-digit triple multiplication  a × b × c
+    const a = rnd(2, 9), b = rnd(2, 9), c = rnd(2, 9);
+    expr   = a + ' × ' + b + ' × ' + c;
+    answer = a * b * c;
+  }
+
+  const choices = generateChoices(answer, tier);
+  return { expr, answer, choices };
+}
+
+// Generate 3 plausible wrong answers + correct answer, shuffled
+// Spread is calibrated to the answer range of each tier:
+//   tier 0 answers  2–18  → spread 3
+//   tier 1 answers 20–198 → spread 14
+//   tier 2 answers 30–237 → spread 20
+//   tier 3 answers  4–81  → spread 8
+//   tier 4 answers  8–729 → spread 40
+function generateChoices(correct, tier) {
+  const SPREADS = [3, 14, 20, 8, 40];
+  const spread  = SPREADS[tier] ?? 14;
+  const wrongs  = new Set();
+
+  while (wrongs.size < 3) {
+    const delta = (Math.random() < 0.5 ? 1 : -1) * rnd(1, spread);
+    const w = correct + delta;
+    if (w !== correct && w > 0 && !wrongs.has(w)) wrongs.add(w);
+  }
+
+  const all = [correct, ...wrongs];
+  for (let i = all.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [all[i], all[j]] = [all[j], all[i]];
+  }
+  return all;
+}
+function drawQuestionArea() {
+  // Divider
+  ctx.strokeStyle = 'rgba(100,40,200,0.3)';
+  ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(0, LAY.qBoxY - 4); ctx.lineTo(CW, LAY.qBoxY - 4); ctx.stroke();
+
+  if (gs.phase !== 'playing' && gs.phase !== 'over') return;
+
+  // Question box placeholder
+  ctx.fillStyle = 'rgba(20,10,40,0.8)';
+  ctx.beginPath(); roundRect(LAY.ansPad, LAY.qBoxY, CW - LAY.ansPad*2, LAY.qBoxH, 8); ctx.fill();
+  ctx.strokeStyle = 'rgba(120,60,220,0.4)';
+  ctx.lineWidth = 1.5;
+  ctx.beginPath(); roundRect(LAY.ansPad, LAY.qBoxY, CW - LAY.ansPad*2, LAY.qBoxH, 8); ctx.stroke();
+
+  // Question text (TODO-04 will render actual question)
+  const q = myFighter().question;
+  if (q) {
+    const me = myFighter();
+    if (me.blackout > 0) {
+      ctx.fillStyle = 'rgba(220,40,60,0.15)';
+      ctx.beginPath(); roundRect(LAY.ansPad, LAY.qBoxY, CW - LAY.ansPad*2, LAY.qBoxH, 8); ctx.fill();
+      ctx.fillStyle = '#ee3355';
+      ctx.font = 'bold 15px "Segoe UI", Arial';
+      ctx.textAlign = 'center';
+      ctx.fillText('WAIT  ' + Math.ceil(me.blackout / 1000) + 's', CW/2, LAY.qBoxY + 35);
+      ctx.textAlign = 'left';
+    } else {
+      ctx.fillStyle = '#e0d0ff';
+      ctx.font = 'bold 22px "Segoe UI", Arial';
+      ctx.textAlign = 'center';
+      ctx.fillText(q.expr + ' = ?', CW/2, LAY.qBoxY + 36);
+      ctx.textAlign = 'left';
+    }
+  } else {
+    ctx.fillStyle = '#3a2060';
+    ctx.font = '13px "Segoe UI", Arial';
+    ctx.textAlign = 'center';
+    ctx.fillText('— QUESTION —', CW/2, LAY.qBoxY + 34);
+    ctx.textAlign = 'left';
+  }
+
+  // Answer boxes (TODO-05 fills with interactive boxes)
+  drawAnswerBoxes();
+}
+
+function drawAnswerBoxes() {
+  const me = myFighter();
+  const choices = me.question ? me.question.choices : ['?', '?', '?', '?'];
+  const locked  = me.blackout > 0;
+
+  for (let i = 0; i < 4; i++) {
+    const col = i % 2;
+    const row = Math.floor(i / 2);
+    const bx  = LAY.ansPad + col * (LAY.ansW + LAY.ansGapX);
+    const by  = LAY.ansY   + row * (LAY.ansH  + LAY.ansGapY);
+
+    // Flash feedback
+    let boxColor = 'rgba(20,10,50,0.9)';
+    let borderColor = 'rgba(100,60,200,0.5)';
+    let textColor = '#c8a0ff';
+
+    if (me.localFlash && me.localFlash.idx === i) {
+      if (me.localFlash.color === 'green') {
+        boxColor = 'rgba(20,120,40,0.9)';
+        borderColor = '#22ee44';
+        textColor = '#ccffcc';
+      } else {
+        boxColor = 'rgba(120,20,30,0.9)';
+        borderColor = '#ee2244';
+        textColor = '#ffcccc';
+      }
+    }
+    if (locked) {
+      boxColor = 'rgba(10,5,20,0.7)';
+      borderColor = 'rgba(60,40,100,0.3)';
+      textColor = '#302040';
+    }
+
+    ctx.fillStyle = boxColor;
+    ctx.beginPath(); roundRect(bx, by, LAY.ansW, LAY.ansH, 10); ctx.fill();
+    ctx.strokeStyle = borderColor;
+    ctx.lineWidth = 2;
+    ctx.beginPath(); roundRect(bx, by, LAY.ansW, LAY.ansH, 10); ctx.stroke();
+
+    if (!locked || me.localFlash) {
+      ctx.fillStyle = textColor;
+      ctx.font = 'bold 26px "Segoe UI", Arial';
+      ctx.textAlign = 'center';
+      ctx.fillText(locked ? '?' : String(choices[i] ?? '?'), bx + LAY.ansW / 2, by + LAY.ansH / 2 + 9);
+      ctx.textAlign = 'left';
+    }
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────
+//   PHASE OVERLAYS
+// ─────────────────────────────────────────────────────────────────
+function drawOverlay() {
+  if (gs.phase === 'title') {
+    drawTitleOverlay();
+  } else if (gs.phase === 'countdown') {
+    drawCountdownOverlay();
+  } else if (gs.phase === 'waiting2p') {
+    drawMsgBox('CONNECTED …', '#9040e0');
+  } else if (gs.phase === 'over') {
+    drawMatchOverOverlay();
+  }
+}
+
+function drawTitleOverlay() {
+  // Dim top portion only
+  ctx.fillStyle = 'rgba(5,3,20,0.82)';
+  ctx.fillRect(0, LAY.stageTop, CW, LAY.stageBot - LAY.stageTop);
+
+  const grad = ctx.createLinearGradient(0, 0, CW, 0);
+  grad.addColorStop(0,   '#ff4080');
+  grad.addColorStop(0.5, '#a020f0');
+  grad.addColorStop(1,   '#00cfff');
+  ctx.fillStyle = grad;
+  ctx.font = 'bold 40px "Segoe UI", Arial';
+  ctx.textAlign = 'center';
+  ctx.fillText('MATH  BATTLE', CW/2, LAY.stageTop + 70);
+
+  ctx.fillStyle = '#5a3a8a';
+  ctx.font = '13px "Segoe UI", Arial';
+  ctx.fillText('1v1  REAL-TIME  MATH  FIGHTING', CW/2, LAY.stageTop + 98);
+
+  ctx.fillStyle = '#9040e0';
+  ctx.font = 'bold 12px "Segoe UI", Arial';
+  ctx.fillText('TAP  OR  PRESS  ENTER  TO  PLAY', CW/2, LAY.stageTop + 128);
+
+  ctx.fillStyle = '#3a2060';
+  ctx.font = '11px "Segoe UI", Arial';
+  ctx.fillText('Use  the  2P ONLINE  button  for  multiplayer', CW/2, LAY.stageTop + 152);
+  ctx.textAlign = 'left';
+}
+
+function drawCountdownOverlay() {
+  const val    = mp.countdown;
+  const isFight = (val === 0);
+  const txt    = isFight ? 'FIGHT!' : String(val);
+
+  ctx.fillStyle = 'rgba(5,3,20,0.65)';
+  ctx.fillRect(0, LAY.stageTop, CW, LAY.stageBot - LAY.stageTop);
+
+  ctx.font = isFight ? 'bold 52px "Segoe UI", Arial' : 'bold 72px "Segoe UI", Arial';
+  const tw  = ctx.measureText(txt).width;
+  const px  = 24, py = 16;
+  const bx  = CW/2 - tw/2 - px;
+  const by  = (LAY.stageTop + LAY.stageBot) / 2 - 44;
+  const bw  = tw + px*2;
+  const bh  = 72;
+
+  ctx.fillStyle = 'rgba(10,5,30,0.88)';
+  ctx.beginPath(); roundRect(bx, by, bw, bh, 12); ctx.fill();
+  ctx.strokeStyle = isFight ? '#ffcc00' : '#9040e0';
+  ctx.lineWidth = 3;
+  ctx.beginPath(); roundRect(bx, by, bw, bh, 12); ctx.stroke();
+
+  const grad = ctx.createLinearGradient(bx, by, bx+bw, by+bh);
+  if (isFight) {
+    grad.addColorStop(0, '#ffcc00'); grad.addColorStop(1, '#ff8800');
+  } else {
+    grad.addColorStop(0, '#a040ff'); grad.addColorStop(1, '#00cfff');
+  }
+  ctx.fillStyle = grad;
+  ctx.textAlign = 'center';
+  ctx.fillText(txt, CW/2, by + (isFight ? 48 : 56));
+  ctx.textAlign = 'left';
+}
+
+function drawMsgBox(txt, color) {
+  ctx.font = 'bold 20px "Segoe UI", Arial';
+  const tw = ctx.measureText(txt).width;
+  const px = 20, py = 12;
+  const bx = CW/2 - tw/2 - px;
+  const by = (LAY.stageTop + LAY.stageBot)/2 - 24;
+  const bw = tw + px*2;
+  const bh = 44;
+  ctx.fillStyle = 'rgba(5,3,20,0.9)';
+  ctx.beginPath(); roundRect(bx, by, bw, bh, 10); ctx.fill();
+  ctx.strokeStyle = color;
+  ctx.lineWidth = 2;
+  ctx.beginPath(); roundRect(bx, by, bw, bh, 10); ctx.stroke();
+  ctx.fillStyle = color;
+  ctx.textAlign = 'center';
+  ctx.fillText(txt, CW/2, by + 28);
+  ctx.textAlign = 'left';
+}
+
+function drawMatchOverOverlay() {
+  // BUG-03: use gs.winner (set by endMatch) instead of checking live HP
+  const w = gs.winner;
+  let mainTxt, mainColor;
+  if (w === 'draw') {
+    mainTxt  = 'DRAW!';
+    mainColor = '#ddcc22';
+  } else if (w === 'p1') {
+    mainTxt   = (mp.active && mp.role === 'p2') ? 'P1  WINS!' : 'YOU  WIN!';
+    mainColor = '#22ee44';
+  } else {
+    mainTxt   = (mp.active && mp.role === 'p2') ? 'YOU  WIN!' : (mp.active ? 'P2  WINS!' : 'CPU  WINS!');
+    mainColor = '#ee2244';
+  }
+  drawMsgBox(mainTxt, mainColor);
+  ctx.font = '10px "Segoe UI", Arial';
+  ctx.fillStyle = '#5a3a8a';
+  ctx.textAlign = 'center';
+  ctx.fillText(mp.active ? 'TAP  2P ONLINE  FOR  REMATCH' : 'TAP  TO  PLAY  AGAIN', CW/2, (LAY.stageTop + LAY.stageBot)/2 + 30);
+  ctx.textAlign = 'left';
+}
+
+// ═══════════════════════════════════════════════════════════════
+//   GAME LOOP
+// ═══════════════════════════════════════════════════════════════
+function gameLoop(ts) {
+  const dt = Math.min(ts - (gs.lastTs || ts), 100);
+  gs.lastTs = ts;
+
+  if (gs.phase === 'playing') {
+    // Tick timer
+    gs.timer -= dt / 1000;
+    if (gs.timer <= 0) {
+      gs.timer = 0;
+      endMatch();
+    }
+
+    // Tick animation accumulators
+    for (const f of [gs.p1, gs.p2]) {
+      if (f.animAcc > 0) {
+        f.animAcc -= dt;
+        if (f.animAcc <= 0) { f.animAcc = 0; f.anim = A.IDLE; }
+      }
+      if (f.blackout > 0) f.blackout -= dt;
+      if (f.localFlash && f.localFlash.acc > 0) {
+        f.localFlash.acc -= dt;
+        if (f.localFlash.acc <= 0) f.localFlash = null;
+      }
+    }
+
+    // CPU logic (solo mode)
+    updateCPU(dt);
+
+    // P1 broadcasts state to P2 at 20Hz
+    if (mp.active && mp.role === 'p1') {
+      mp.broadcastAcc += dt;
+      if (mp.broadcastAcc >= BROADCAST_MS) {
+        mp.broadcastAcc = 0;
+        broadcastState();
+      }
+    }
+  }
+
+  render();
+  requestAnimationFrame(gameLoop);
+}
+
+function endMatch() {
+  if (gs.phase === 'over') return;   // BUG-02: guard against double-call
+  gs.phase = 'over';
+  bgm.stop();
+  // Set win/defeat poses
+  if (gs.p1.hp <= 0 && gs.p2.hp <= 0) {
+    // Simultaneous KO
+    gs.p1.anim = A.DEFEAT; gs.p2.anim = A.DEFEAT;
+    gs.winner = 'draw';
+    snd.defeat();
+  } else if (gs.p1.hp <= 0) {
+    gs.p1.anim = A.DEFEAT; gs.p2.anim = A.WIN;
+    gs.p2.wins++;
+    gs.winner = 'p2';
+    snd.victory();
+  } else if (gs.p2.hp <= 0) {
+    gs.p2.anim = A.DEFEAT; gs.p1.anim = A.WIN;
+    gs.p1.wins++;
+    gs.winner = 'p1';
+    snd.victory();
+  } else {
+    // BUG-01: Timer expired — compare remaining HP to decide winner
+    if (gs.p1.hp > gs.p2.hp) {
+      gs.p2.anim = A.DEFEAT; gs.p1.anim = A.WIN;
+      gs.p1.wins++;
+      gs.winner = 'p1';
+      snd.victory();
+    } else if (gs.p2.hp > gs.p1.hp) {
+      gs.p1.anim = A.DEFEAT; gs.p2.anim = A.WIN;
+      gs.p2.wins++;
+      gs.winner = 'p2';
+      snd.victory();
+    } else {
+      // Equal HP — true draw
+      gs.p1.anim = A.IDLE; gs.p2.anim = A.IDLE;
+      gs.winner = 'draw';
+      snd.defeat();
+    }
+  }
+  // P1 sends a final broadcast so P2 sees the over screen
+  if (mp.active && mp.role === 'p1') broadcastState();
+}
+
+// ── Keyboard ─────────────────────────────────────────────────────
+document.addEventListener('keydown', e => {
+  if (e.code === 'Enter') {
+    if (gs.phase === 'title') { startSolo(); return; }
+    if (gs.phase === 'over')  { handleRematch(); return; }
+  }
+});
+
+// ── Canvas click → answer boxes (TODO-05 will fill in hit detection)
+canvas.addEventListener('pointerdown', e => {
+  e.preventDefault();
+  if (gs.phase === 'title') { initAudio(); startSolo(); return; }
+  if (gs.phase === 'over')  { handleRematch(e); return; }
+  handleAnswerClick(e);
+}, { passive: false });
+
+function handleAnswerClick(e) {
+  if (gs.phase !== 'playing') return;
+  const me = myFighter();
+  if (!me.question || me.blackout > 0) return;
+
+  // Map pointer position to canvas coordinates
+  const rect = canvas.getBoundingClientRect();
+  const scaleX = CW / rect.width;
+  const scaleY = CH / rect.height;
+  const cx = (e.clientX - rect.left) * scaleX;
+  const cy = (e.clientY - rect.top)  * scaleY;
+
+  // Hit-test each of the 4 answer boxes (2×2 grid)
+  for (let i = 0; i < 4; i++) {
+    const col = i % 2;
+    const row = Math.floor(i / 2);
+    const bx  = LAY.ansPad + col * (LAY.ansW + LAY.ansGapX);
+    const by  = LAY.ansY   + row * (LAY.ansH  + LAY.ansGapY);
+
+    if (cx >= bx && cx <= bx + LAY.ansW && cy >= by && cy <= by + LAY.ansH) {
+      submitAnswer(i);
+      return;
+    }
+  }
+}
+
+// ── Answer submission ─────────────────────────────────────────────
+function submitAnswer(idx) {
+  const me  = myFighter();
+  const opp = oppFighter();
+  if (!me.question || me.blackout > 0) return;
+
+  const chosen  = me.question.choices[idx];
+  const correct = (chosen === me.question.answer);
+
+  // Immediate local optimistic flash
+  me.localFlash = { idx, color: correct ? 'green' : 'red', acc: 380 };
+  initAudio();
+  if (correct) {
+    snd.correct();
+    onCorrectAnswer(me, opp, idx);
+  } else {
+    snd.wrong();
+    onWrongAnswer(me, idx);
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════
+//   CORRECT ANSWER FLOW  (TODO-06)
+// ═══════════════════════════════════════════════════════════════
+function onCorrectAnswer(me, opp, idx) {
+  me.combo++;
+  const tier   = comboTier(me.combo);
+  const damage = DAMAGE_TABLE[tier];
+  const manaGain = MANA_TABLE[tier];
+
+  // In 2P mode: P2 sends answer to P1, P1 validates + broadcasts
+  if (mp.active && mp.role === 'p2') {
+    mp.myAnswerSeq++;
+    mp.conn.send({
+      type      : 'answer',
+      seq       : mp.myAnswerSeq,
+      choiceIdx : idx,
+      correct   : true,
+    });
+    // P2 applies optimistic local animations immediately
+    me.anim    = tier >= 3 ? A.HEAVY : A.ATTACK;
+    me.animAcc = tier >= 3 ? 500 : 350;
+    // Generate new question for P2 locally
+    me.question = generateQuestion(me.combo);
+    return;
+  }
+
+  // P1 / solo: authoritative logic
+  applyCorrectResult(me, opp, damage, manaGain, tier);
+}
+
+function applyCorrectResult(attacker, defender, damage, manaGain, tier) {
+  // Attack animation on attacker
+  attacker.anim    = tier >= 3 ? A.HEAVY : A.ATTACK;
+  attacker.animAcc = tier >= 3 ? 500 : 350;
+  snd.attack();
+
+  // Damage opponent
+  defender.hp = Math.max(0, defender.hp - damage);
+  defender.anim    = A.HIT;
+  defender.animAcc = 420;
+  snd.hit();
+
+  // Mana gain for attacker
+  attacker.mana = Math.min(MAX_MANA, attacker.mana + manaGain);
+
+  // Check for mana special (handled in TODO-09)
+  if (attacker.mana >= MAX_MANA) {
+    triggerSpecialAttack(attacker, defender);
+  }
+
+  // New question for the attacker
+  attacker.question = generateQuestion(attacker.combo);
+
+  // Win check
+  if (defender.hp <= 0) {
+    setTimeout(endMatch, 400);
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════
+//   MANA SPECIAL ATTACK  (TODO-09)
+//   Called by applyCorrectResult when mana reaches MAX_MANA.
+//   Deals extra damage, plays special animation, resets mana.
+// ═══════════════════════════════════════════════════════════════
+function triggerSpecialAttack(attacker, defender) {
+  attacker.mana    = 0;            // consume all mana
+  attacker.anim    = A.SPECIAL;
+  attacker.animAcc = 900;          // hold special pose longer
+  snd.special();
+
+  // Extra damage on top of normal hit
+  const extraDmg = SPECIAL_DMG;
+  defender.hp     = Math.max(0, defender.hp - extraDmg);
+  defender.anim    = A.HIT;
+  defender.animAcc = 650;          // longer stagger for special
+
+  // Mana bonus reward for using special
+  attacker.mana = Math.min(MAX_MANA, SPECIAL_MANA_BONUS);
+}
+
+// ═══════════════════════════════════════════════════════════════
+//   INCORRECT ANSWER PUNISHMENT  (TODO-07)
+// ═══════════════════════════════════════════════════════════════
+function onWrongAnswer(me, idx) {
+  // Combo resets immediately
+  me.combo = 0;
+
+  // In 2P P2 mode: notify P1
+  if (mp.active && mp.role === 'p2') {
+    mp.myAnswerSeq++;
+    mp.conn.send({
+      type      : 'answer',
+      seq       : mp.myAnswerSeq,
+      choiceIdx : idx,
+      correct   : false,
+    });
+  }
+
+  // 3-second blackout — question and boxes blank out, cannot interact
+  me.blackout = BLACKOUT_MS;
+
+  // After blackout, the same question re-appears (already stored in me.question)
+  // Nothing else changes — no HP or mana affected
+}
+
+// ═══════════════════════════════════════════════════════════════
+//   COMBO & DIFFICULTY SCALING  (TODO-08)
+//   comboTier() and DAMAGE/MANA tables already defined above.
+//   This section adds the CPU opponent logic for solo play.
+// ═══════════════════════════════════════════════════════════════
+
+// CPU answers its own question every cpuThinkMs milliseconds.
+// Difficulty (error rate + speed) is fixed at 'normal' level.
+const CPU_THINK_BASE  = 2400;   // ms between CPU answers (base)
+const CPU_ERROR_RATE  = 0.22;   // 22% chance of a wrong answer
+let cpuThinkAcc = 0;
+
+function updateCPU(dt) {
+  if (gs.phase !== 'playing') return;
+  if (mp.active) return;   // no CPU in multiplayer
+
+  cpuThinkAcc += dt;
+  const thinkMs = CPU_THINK_BASE - gs.p2.combo * 40;   // gets faster with combo
+
+  if (cpuThinkAcc < Math.max(800, thinkMs)) return;
+  cpuThinkAcc = 0;
+
+  const cpu = gs.p2;
+  if (!cpu.question || cpu.blackout > 0) return;
+
+  const isWrong = Math.random() < CPU_ERROR_RATE;
+  if (isWrong) {
+    // Pick a wrong answer
+    const wrongIdx = cpu.question.choices.findIndex(c => c !== cpu.question.answer);
+    cpu.localFlash = { idx: wrongIdx, color: 'red', acc: 380 };
+    cpu.combo = 0;
+    cpu.blackout = BLACKOUT_MS;
+  } else {
+    // Pick correct answer — mirror the player path: increment combo first
+    const correctIdx = cpu.question.choices.indexOf(cpu.question.answer);
+    cpu.localFlash = { idx: correctIdx, color: 'green', acc: 380 };
+    cpu.combo++;
+    const tier = comboTier(cpu.combo);
+    applyCorrectResult(cpu, gs.p1, DAMAGE_TABLE[tier], MANA_TABLE[tier], tier);
+  }
+}
+
+// ── Start solo game (vs CPU placeholder) ─────────────────────────
+function startSolo() {
+  gs.phase = 'playing';
+  resetMatch();
+  gs.p1.question = generateQuestion(0);
+  gs.p2.question = generateQuestion(0);
+  cpuThinkAcc = 0;
+  bgm.start();
+}
+
+// ── Rematch  (TODO-16) ───────────────────────────────────────────
+// Solo: restart immediately.
+// 2P: P1 initiates rematch countdown; P2 opens lobby to rejoin.
+function handleRematch() {
+  if (mp.active) {
+    if (mp.role === 'p1') {
+      // P1 can restart directly
+      setTimeout(startCountdown, 300);
+    } else {
+      // P2 re-opens lobby (they'll click "2P Online" again or P1 will push countdown)
+      lobbyOpen();
+    }
+  } else {
+    startSolo();
+  }
+}
+
+function resetMatch() {
+  gs.timer  = 180;
+  gs.winner = null;
+  for (const f of [gs.p1, gs.p2]) {
+    f.hp       = MAX_HP;
+    f.mana     = 0;
+    f.combo    = 0;
+    f.anim     = A.IDLE;
+    f.animAcc  = 0;
+    f.question = null;
+    f.blackout = 0;
+    f.localFlash = null;
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════
+//   LOBBY  —  UI NAVIGATION
+// ═══════════════════════════════════════════════════════════════
+function lobbyOpen() {
+  lobbyShowView('lv-home');
+  document.getElementById('lobby').classList.add('visible');
+}
+function lobbyClose() {
+  document.getElementById('lobby').classList.remove('visible');
+}
+function lobbyBack() {
+  document.getElementById('err-create').textContent = '';
+  document.getElementById('err-join').textContent   = '';
+  lobbyCancel();
+  lobbyShowView('lv-home');
+}
+function lobbyShowCreate() { lobbyShowView('lv-create'); }
+function lobbyShowJoin()   { lobbyShowView('lv-join');   }
+function lobbyShowView(id) {
+  document.querySelectorAll('.lv').forEach(el => el.classList.remove('active'));
+  document.getElementById(id).classList.add('active');
+}
+
+function lobbyCancel() {
+  if (mp.peer && !mp.peer.destroyed) { mp.peer.destroy(); mp.peer = null; }
+  if (mp.conn) { try { mp.conn.close(); } catch(e){} mp.conn = null; }
+  mp.active = false;
+  mp.role   = null;
+}
+
+// ═══════════════════════════════════════════════════════════════
+//   LOBBY  —  CREATE ROOM  (P1 / host)
+// ═══════════════════════════════════════════════════════════════
+function doCreateRoom() {
+  const raw   = document.getElementById('inp-create').value.trim().toUpperCase();
+  const errEl = document.getElementById('err-create');
+  if (!raw) { errEl.textContent = 'Please enter a room name.'; return; }
+  errEl.textContent = '';
+
+  const peerId = PEER_PREFIX + raw;
+  mp.roomCode  = raw;
+  mp.role      = 'p1';
+
+  document.getElementById('disp-code').textContent     = raw;
+  document.getElementById('waiting-status').textContent = 'Waiting for opponent\u2026';
+  lobbyShowView('lv-waiting');
+
+  const peer = new Peer(peerId);
+  mp.peer = peer;
+
+  peer.on('error', (err) => {
+    document.getElementById('waiting-status').textContent =
+      err.type === 'unavailable-id'
+        ? 'Room name taken — try another.'
+        : 'Error: ' + err.message;
+    lobbyCancel();
+    setTimeout(() => lobbyBack(), 2200);
+  });
+
+  peer.on('open', () => {
+    document.getElementById('waiting-status').textContent = 'Waiting for opponent\u2026';
+  });
+
+  peer.on('connection', (conn) => {
+    mp.conn = conn;
+    conn.on('open', () => {
+      document.getElementById('lobby').classList.remove('visible');
+      onBothConnected_P1(conn);
+    });
+    conn.on('error', (e) => console.warn('P1 conn error', e));
+  });
+}
+
+// ═══════════════════════════════════════════════════════════════
+//   LOBBY  —  JOIN ROOM  (P2 / client)
+// ═══════════════════════════════════════════════════════════════
+function doJoinRoom() {
+  const raw   = document.getElementById('inp-join').value.trim().toUpperCase();
+  const errEl = document.getElementById('err-join');
+  if (!raw) { errEl.textContent = 'Please enter a room name.'; return; }
+  errEl.textContent = '';
+
+  const peerId = PEER_PREFIX + raw;
+  mp.roomCode  = raw;
+  mp.role      = 'p2';
+
+  document.getElementById('connecting-status').textContent = 'Connecting to ' + raw + '\u2026';
+  lobbyShowView('lv-connecting');
+
+  const peer = new Peer();
+  mp.peer = peer;
+
+  peer.on('error', (err) => {
+    document.getElementById('connecting-status').textContent = 'Failed: ' + err.message;
+    setTimeout(() => lobbyBack(), 2200);
+  });
+
+  peer.on('open', () => {
+    const conn = peer.connect(peerId, { reliable: true });
+    mp.conn = conn;
+
+    conn.on('open', () => {
+      document.getElementById('lobby').classList.remove('visible');
+      onBothConnected_P2(conn);
+    });
+
+    conn.on('error', () => {
+      document.getElementById('connecting-status').textContent =
+        'Could not reach room "' + raw + '"';
+      setTimeout(() => lobbyBack(), 2200);
+    });
+  });
+}
+
+// ═══════════════════════════════════════════════════════════════
+//   MULTIPLAYER — CONNECTION HANDLERS (stubs — TODO-12 fills in)
+// ═══════════════════════════════════════════════════════════════
+function onBothConnected_P1(conn) {
+  mp.active = true;
+  mp.role   = 'p1';
+  conn.on('data',  receiveFromP2);
+  conn.on('close', onOpponentDisconnected);
+  setTimeout(startCountdown, 600);
+}
+
+function onBothConnected_P2(conn) {
+  mp.active = true;
+  mp.role   = 'p2';
+  conn.on('data',  receiveFromP1);
+  conn.on('close', onOpponentDisconnected);
+  gs.phase = 'waiting2p';
+}
+
+function startCountdown() {
+  if (!mp.conn || !mp.active) return;
+  mp.countdown = 3;
+  gs.phase = 'countdown';
+  // BUG-05: removed the outer snd.tick() — tick() calls it on the first iteration already
+  let val = 3;
+  function tick() {
+    if (!mp.conn || !mp.active) return;
+    mp.countdown = val;
+    mp.conn.send({ type: 'countdown', val });
+    snd.tick();   // one tick per countdown step, including the initial 3
+    if (val > 0) { val--; setTimeout(tick, 1000); }
+    else {
+      setTimeout(() => {
+        if (!mp.conn || !mp.active) return;
+        mp.conn.send({ type: 'start' });
+        setTimeout(launch2PGame, 900);
+      }, 900);
+    }
+  }
+  tick();
+}
+
+function launch2PGame() {
+  mp.broadcastAcc  = 0;
+  mp.myAnswerSeq   = 0;
+  mp.p2AnswerSeq   = 0;
+  resetMatch();
+  gs.phase = 'playing';
+  // Generate initial questions for both fighters
+  gs.p1.question = generateQuestion(0);
+  gs.p2.question = generateQuestion(0);
+  snd.start();
+  bgm.start();
+}
+
+function receiveFromP2(data) {
+  // ── Answer relay from P2  (TODO-13) ──────────────────────────
+  if (data.type === 'answer') {
+    if (data.seq <= mp.p2AnswerSeq) return;   // already processed
+    mp.p2AnswerSeq = data.seq;
+
+    const p2 = gs.p2;
+    if (!p2.question || p2.blackout > 0) return;
+
+    const chosen  = p2.question.choices[data.choiceIdx];
+    const correct = (chosen === p2.question.answer);
+
+    // Optimistic flash visible on P1's screen for P2's box
+    p2.localFlash = { idx: data.choiceIdx, color: correct ? 'green' : 'red', acc: 380 };
+
+    if (correct) {
+      p2.combo++;
+      applyCorrectResult(p2, gs.p1,
+        DAMAGE_TABLE[comboTier(p2.combo)],
+        MANA_TABLE[comboTier(p2.combo)],
+        comboTier(p2.combo));
+    } else {
+      p2.combo    = 0;
+      p2.blackout = BLACKOUT_MS;
+    }
+  }
+}
+
+function receiveFromP1(data) {
+  if (data.type === 'countdown') {
+    mp.countdown = data.val;
+    gs.phase = 'countdown';
+    snd.tick();   // BUG-04: P2 now hears each countdown tick
+  } else if (data.type === 'start') {
+    mp.countdown = 0;
+    gs.phase = 'countdown';
+    setTimeout(launch2PGame, 900);
+  } else if (data.type === 'state') {
+    // ── TODO-15: Apply authoritative state from P1 ───────────────
+    gs.phase  = data.phase;
+    gs.timer  = data.timer;
+    if (data.winner !== undefined) gs.winner = data.winner;
+
+    // P1 fighter (opponent from P2's view)
+    Object.assign(gs.p1, data.p1);
+
+    // P2's own fighter — authoritative HP/mana/combo from P1
+    // Keep local anim unless P1 says we're HIT (prevents rubber-banding)
+    const s2 = data.p2;
+    gs.p2.hp      = s2.hp;
+    gs.p2.mana    = s2.mana;
+    gs.p2.combo   = s2.combo;
+    gs.p2.blackout = s2.blackout;
+    // Only override question if P1 sent one (new question after correct answer)
+    if (s2.question) gs.p2.question = s2.question;
+    // Override animation only on HIT or DEFEAT (authoritative damage)
+    if (s2.anim === A.HIT || s2.anim === A.DEFEAT || s2.anim === A.WIN) {
+      gs.p2.anim    = s2.anim;
+      gs.p2.animAcc = s2.animAcc;
+    }
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════
+//   P1 STATE BROADCAST  (TODO-14)  — 20Hz authoritative snapshot
+// ═══════════════════════════════════════════════════════════════
+function broadcastState() {
+  if (!mp.conn || !mp.active || mp.role !== 'p1') return;
+  mp.conn.send({
+    type   : 'state',
+    phase  : gs.phase,
+    timer  : gs.timer,
+    winner : gs.winner,
+    p1 : {
+      hp       : gs.p1.hp,
+      mana     : gs.p1.mana,
+      combo    : gs.p1.combo,
+      anim     : gs.p1.anim,
+      animAcc  : gs.p1.animAcc,
+      blackout : gs.p1.blackout,
+    },
+    p2 : {
+      hp       : gs.p2.hp,
+      mana     : gs.p2.mana,
+      combo    : gs.p2.combo,
+      anim     : gs.p2.anim,
+      animAcc  : gs.p2.animAcc,
+      blackout : gs.p2.blackout,
+      question : gs.p2.question,   // P1 is authoritative for P2's question
+    },
+  });
+}
+
+function onOpponentDisconnected() {
+  const wasActive = mp.active;
+  mp.active = false;
+  mp.role   = null;
+  bgm.stop();   // BUG-06: stop BGM when opponent disconnects mid-game
+  if (mp.peer && !mp.peer.destroyed) { try { mp.peer.destroy(); } catch(e){} mp.peer = null; }
+  mp.conn  = null;
+  gs.phase = 'title';
+  if (wasActive) {
+    lobbyOpen();
+    const notice = document.createElement('div');
+    notice.className = 'lobby-status';
+    notice.style.color = '#e04060';
+    notice.style.marginBottom = '8px';
+    notice.textContent = 'Opponent disconnected.';
+    const homeView = document.getElementById('lv-home');
+    homeView.insertBefore(notice, homeView.firstChild);
+    setTimeout(() => notice.remove(), 3000);
+  }
+}
+
+// ── Kick off render loop ──────────────────────────────────────────
+requestAnimationFrame(gameLoop);
+</script>
+</body>
+</html>
