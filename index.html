@@ -91,8 +91,10 @@ body {
 @media (max-width: 699px) {
   body        { min-height: 100dvh; padding: 0; align-items: flex-start; }
   #titleStrip { display: none; }
-  #btnRow     { display: none; }
   #gameWrapper { gap: 0; }
+  /* Keep #btnRow visible so mobile users can reach 2P Online */
+  #btnRow     { padding: 6px 0 4px; gap: 8px; }
+  .ui-btn     { padding: 8px 14px; font-size: 11px; letter-spacing: 1px; }
 }
 
 /* ── Fullscreen toggle ── */
@@ -317,7 +319,7 @@ function scaleCanvas() {
   let availW, availH, maxScale;
   if (mobile) {
     availW   = vw;
-    availH   = vh;
+    availH   = vh - 56;   // reserve ~56px for the button row below canvas
     maxScale = 2.0;           // allow upscaling on phones/tablets
   } else {
     availW   = vw  - 32;
